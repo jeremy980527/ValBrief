@@ -92,7 +92,7 @@ export default function LinkRiotModal({ onClose, onLinked }: Props) {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = 'valbrief-companion.ps1'
+      a.download = 'valbrief-companion.bat'
       a.click()
       URL.revokeObjectURL(url)
       setCompanionDone(false)
@@ -161,9 +161,9 @@ export default function LinkRiotModal({ onClose, onLinked }: Props) {
                 <div className="space-y-2">
                   {[
                     '開啟 Riot Client（不需要進遊戲）',
-                    '點下方按鈕下載腳本',
-                    '右鍵點擊 .ps1 檔案 → 以 PowerShell 執行',
-                    '腳本完成後點「確認連結」',
+                    '點下方按鈕下載 .bat 檔案',
+                    '直接雙擊 .bat 檔案執行',
+                    '視窗顯示「OK 成功連結」後點下方按鈕',
                   ].map((text, i) => (
                     <div key={i} className="flex items-center gap-3">
                       <span className="w-5 h-5 rounded-full bg-green-primary/20 text-green-primary text-xs flex items-center justify-center flex-shrink-0 font-bold">{i + 1}</span>
@@ -186,7 +186,7 @@ export default function LinkRiotModal({ onClose, onLinked }: Props) {
                 >
                   {loading
                     ? <><div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />產生中...</>
-                    : <><Download size={15} />下載 Token 同步腳本</>}
+                    : <><Download size={15} />下載同步工具 (.bat)</>}
                 </button>
 
                 <button

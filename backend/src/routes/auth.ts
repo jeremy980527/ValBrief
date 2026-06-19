@@ -252,9 +252,13 @@ try {
 Write-Host ""; Read-Host "按 Enter 關閉"
 `
 
+  // Wrap PS1 in a .bat that bypasses execution policy — avoids the "script blocked" flash
+  const encoded = Buffer.from(script, 'utf16le').toString('base64')
+  const bat = `@echo off\r\nchcp 65001 > nul\r\npowershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encoded}\r\n`
+
   res.setHeader('Content-Type', 'application/octet-stream')
-  res.setHeader('Content-Disposition', 'attachment; filename="valbrief-companion.ps1"')
-  res.send(script)
+  res.setHeader('Content-Disposition', 'attachment; filename="valbrief-companion.bat"')
+  res.send(bat)
 })
 
 // Receive tokens from companion script (auth via OTP code, no session needed)
