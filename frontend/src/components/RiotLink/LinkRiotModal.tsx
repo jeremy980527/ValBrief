@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Link2, AlertCircle, Eye, EyeOff, Shield, ChevronDown, ClipboardPaste, CheckCircle, Monitor, Download, RefreshCw } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
+import { userApi } from '../../lib/api'
 
 interface Props { onClose: () => void; onLinked: () => void }
 
@@ -103,12 +104,16 @@ export default function LinkRiotModal({ onClose, onLinked }: Props) {
   }
 
   async function handleCompanionRefresh() {
-    setLoading(true)
+    setLoading(true); setError('')
     try {
-      await refreshUser()
-      onLinked()
+      const freshUser = await userApi.me()
+      if (freshUser?.riotLinked) {
+        onLinked()
+      } else {
+        setError('尚未偵測到連結。請確認腳本顯示「OK 成功連結」後再點此按鈕。')
+      }
     } catch {
-      setError('尚未偵測到連結，請先執行腳本再重試')
+      setError('網路錯誤，請稍後再試')
     } finally {
       setLoading(false)
     }

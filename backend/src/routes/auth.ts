@@ -190,6 +190,8 @@ $localHeaders = @{ Authorization = $authHeader }
 try {
     $tokenRes = Invoke-RestMethod -Uri "https://127.0.0.1:$port/entitlements/v1/token" -Headers $localHeaders -ErrorAction Stop
     $accessToken = $tokenRes.accessToken
+    $entitlementToken = $tokenRes.entitlementsToken
+    $puuid = $tokenRes.subject
     Write-Host "OK Token 取得成功" -ForegroundColor Green
 } catch {
     Write-Host ""
@@ -199,10 +201,41 @@ try {
     exit 1
 }
 
+Write-Host "正在取得帳號資訊..." -ForegroundColor Yellow
+$gameName = ""
+$tagLine = ""
+try {
+    $userInfoRes = Invoke-RestMethod -Uri "https://auth.riotgames.com/userinfo" -Headers @{ Authorization = "Bearer $accessToken" } -ErrorAction Stop
+    $gameName = $userInfoRes.acct.game_name
+    $tagLine = $userInfoRes.acct.tag_line
+    Write-Host "OK 帳號：$($gameName)#$($tagLine)" -ForegroundColor Green
+} catch {
+    Write-Host "警告：無法取得帳號名稱，將使用空白" -ForegroundColor Yellow
+}
+
+$region = "ap"
+try {
+    $pasRes = Invoke-RestMethod -Uri "https://riot-geo.pas.si.riotgames.com/pas/v1/service/chat" -Headers @{ Authorization = "Bearer $accessToken" } -ErrorAction Stop
+    if ($pasRes.affinity) { $region = $pasRes.affinity }
+    elseif ($pasRes.affinities -and $pasRes.affinities.live) { $region = $pasRes.affinities.live }
+    Write-Host "OK 地區：$region" -ForegroundColor Green
+} catch {
+    Write-Host "警告：無法偵測地區，使用預設 ap" -ForegroundColor Yellow
+}
+
 Write-Host "正在同步至 ValBrief..." -ForegroundColor Yellow
 
 try {
-    $body = '{"code":"' + $Code + '","accessToken":"' + $accessToken + '"}'
+    $payload = [PSCustomObject]@{
+        code = $Code
+        accessToken = $accessToken
+        entitlementToken = $entitlementToken
+        puuid = $puuid
+        gameName = $gameName
+        tagLine = $tagLine
+        region = $region
+    }
+    $body = $payload | ConvertTo-Json -Compress
     $result = Invoke-RestMethod -Uri "$ServerUrl/api/auth/link-from-companion" -Method POST -Body $body -ContentType "application/json" -ErrorAction Stop
 
     if ($result.success) {
@@ -226,19 +259,34 @@ Write-Host ""; Read-Host "按 Enter 關閉"
 
 // Receive tokens from companion script (auth via OTP code, no session needed)
 router.post('/link-from-companion', async (req, res) => {
-  const { code, accessToken } = req.body
+  const { code, accessToken, entitlementToken, puuid, gameName, tagLine, region } = req.body
   if (!code || !accessToken) return res.status(400).json({ success: false, error: '缺少參數' })
 
   const userId = consumeOtp(code)
-  if (!userId) return res.status(401).json({ success: false, error: '驗證碼無效或已過期' })
+  if (!userId) return res.status(401).json({ success: false, error: '驗證碼無效或已過期，請重新下載腳本' })
 
   try {
+    if (entitlementToken && puuid) {
+      // Script provided all tokens — save directly, no VPS→Riot calls needed
+      saveRiotTokens(userId, {
+        accessToken,
+        entitlementToken,
+        puuid,
+        region: region || 'ap',
+        gameName: gameName || '',
+        tagLine: tagLine || '',
+      })
+      console.log(`[companion] linked userId=${userId} gameName=${gameName}#${tagLine}`)
+      return res.json({ success: true, gameName, tagLine })
+    }
+
+    // Fallback for old scripts: exchange via backend
     const tokens = await exchangeAccessToken(accessToken)
     saveRiotTokens(userId, tokens)
     console.log(`[companion] linked userId=${userId} gameName=${tokens.gameName}#${tokens.tagLine}`)
     return res.json({ success: true, gameName: tokens.gameName, tagLine: tokens.tagLine })
   } catch (e: any) {
-    console.error('[companion] exchangeAccessToken failed:', e.message)
+    console.error('[companion] failed:', e.message)
     return res.status(500).json({ success: false, error: '處理 Token 失敗：' + e.message })
   }
 })
