@@ -18,7 +18,16 @@ declare module 'express-session' {
 const app = express()
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001
 
-app.use(cors({ origin: true, credentials: true }))
+app.use(cors({
+  origin: [
+    'https://valbrief.com',
+    'https://www.valbrief.com',
+    'http://45.76.187.81',
+    'http://localhost:5173',
+  ],
+  credentials: true,
+}))
+app.set('trust proxy', 1)  // trust Cloudflare proxy
 app.use(express.json())
 app.use(session({
   secret: 'valbrief-secret-2024',
