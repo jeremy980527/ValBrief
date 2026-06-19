@@ -12,12 +12,8 @@ export const userApi = {
 }
 
 export const authApi = {
-  link: (username: string, password: string) =>
-    api.post('/auth/link', { username, password }).then(r => r.data),
-  mfa: (code: string) =>
-    api.post('/auth/mfa', { code }).then(r => r.data),
-  linkManual: (data: any) =>
-    api.post('/auth/link/manual', data).then(r => r.data),
+  linkViaUrl: (callbackUrl: string, regionOverride?: string) =>
+    api.post('/auth/link-via-url', { callbackUrl, regionOverride }).then(r => r.data),
   unlink: () =>
     api.delete('/auth/link').then(r => r.data),
 }

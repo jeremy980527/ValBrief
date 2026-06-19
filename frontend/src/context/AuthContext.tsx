@@ -9,9 +9,7 @@ interface AuthCtx {
   register: (email: string, username: string, password: string) => Promise<any>
   logout: () => Promise<void>
   refreshUser: () => Promise<void>
-  linkRiot: (username: string, password: string) => Promise<any>
-  linkRiotManual: (data: any) => Promise<any>
-  mfa: (code: string) => Promise<any>
+  linkViaUrl: (callbackUrl: string, regionOverride?: string) => Promise<any>
   unlinkRiot: () => Promise<void>
 }
 
@@ -51,20 +49,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null)
   }, [])
 
-  const linkRiot = useCallback(async (username: string, password: string) => {
-    const data = await authApi.link(username, password)
-    if (data.success) await refreshUser()
-    return data
-  }, [refreshUser])
-
-  const linkRiotManual = useCallback(async (tokens: any) => {
-    const data = await authApi.linkManual(tokens)
-    if (data.success) await refreshUser()
-    return data
-  }, [refreshUser])
-
-  const mfa = useCallback(async (code: string) => {
-    const data = await authApi.mfa(code)
+  const linkViaUrl = useCallback(async (callbackUrl: string, regionOverride?: string) => {
+    const data = await authApi.linkViaUrl(callbackUrl, regionOverride)
     if (data.success) await refreshUser()
     return data
   }, [refreshUser])
@@ -75,7 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [refreshUser])
 
   return (
-    <Ctx.Provider value={{ user, loading, login, register, logout, refreshUser, linkRiot, linkRiotManual, mfa, unlinkRiot }}>
+    <Ctx.Provider value={{ user, loading, login, register, logout, refreshUser, linkViaUrl, unlinkRiot }}>
       {children}
     </Ctx.Provider>
   )
