@@ -2,6 +2,7 @@ import { Router } from 'express'
 import axios from 'axios'
 import { saveRiotTokens, clearRiotTokens } from '../db/users'
 import { requireInternalAuth } from '../middleware/auth'
+import { login as riotLogin, completeMFA } from '../services/riotAuth'
 
 const router = Router()
 
@@ -41,7 +42,6 @@ async function exchangeAccessToken(accessToken: string, regionOverride?: string)
       timeout: 5000,
     })
     const d = pasRes.data
-    // /service/chat may return { affinity } or { affinities: { live } }
     const detected = d?.affinity || d?.affinities?.live
     if (detected) { region = detected; console.log(`[link] PAS region: ${region}`) }
     else console.warn('[link] PAS response has no affinity:', JSON.stringify(d))
@@ -49,6 +49,48 @@ async function exchangeAccessToken(accessToken: string, regionOverride?: string)
 
   return { accessToken, entitlementToken, puuid, region, gameName, tagLine }
 }
+
+// Direct credential login — gives game-scope tokens that work with the private API
+router.post('/link-credential', requireInternalAuth, async (req, res) => {
+  const { username, password } = req.body
+  if (!username || !password) return res.json({ success: false, error: '請輸入帳號和密碼' })
+  try {
+    const result = await riotLogin(username, password)
+    if (result.success && result.tokens) {
+      saveRiotTokens(req.session.userId!, result.tokens)
+      return res.json({ success: true, gameName: result.tokens.gameName, tagLine: result.tokens.tagLine })
+    }
+    if (result.requiresMFA) {
+      return res.json({
+        success: false,
+        requiresMFA: true,
+        mfaSessionId: result.mfaSessionId,
+        mfaEmail: result.mfaEmail,
+      })
+    }
+    return res.json({ success: false, error: result.error || '登入失敗，請確認帳號密碼' })
+  } catch (e: any) {
+    console.error('[link-credential]', e.message)
+    return res.json({ success: false, error: '連線失敗：' + e.message })
+  }
+})
+
+// 2FA code verification for credential login
+router.post('/link-credential-mfa', requireInternalAuth, async (req, res) => {
+  const { mfaSessionId, code } = req.body
+  if (!mfaSessionId || !code) return res.json({ success: false, error: '缺少必要參數' })
+  try {
+    const result = await completeMFA(mfaSessionId, code)
+    if (result.success && result.tokens) {
+      saveRiotTokens(req.session.userId!, result.tokens)
+      return res.json({ success: true, gameName: result.tokens.gameName, tagLine: result.tokens.tagLine })
+    }
+    return res.json({ success: false, error: result.error || '驗證碼錯誤' })
+  } catch (e: any) {
+    console.error('[link-credential-mfa]', e.message)
+    return res.json({ success: false, error: '驗證失敗：' + e.message })
+  }
+})
 
 // Link via callback page (popup auto-extracts token, posts here)
 router.post('/link-from-callback', requireInternalAuth, async (req, res) => {
@@ -65,7 +107,7 @@ router.post('/link-from-callback', requireInternalAuth, async (req, res) => {
   }
 })
 
-// Link via pasted callback URL (fallback when popup redirect is rejected)
+// Link via pasted callback URL
 router.post('/link-via-url', requireInternalAuth, async (req, res) => {
   const { callbackUrl, regionOverride } = req.body
   if (!callbackUrl) return res.json({ success: false, error: '請貼上網址' })

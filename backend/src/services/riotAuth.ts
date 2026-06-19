@@ -84,7 +84,7 @@ export async function login(username: string, password: string): Promise<AuthRes
       nonce: '1',
       redirect_uri: 'https://playvalorant.com/opt_in',
       response_type: 'token id_token',
-      scope: 'account openid',
+      scope: 'account openid lol_region link ban',
     })
 
     const r = await client.put(AUTH_URL, {

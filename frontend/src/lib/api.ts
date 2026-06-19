@@ -12,6 +12,10 @@ export const userApi = {
 }
 
 export const authApi = {
+  linkWithCredential: (username: string, password: string) =>
+    api.post('/auth/link-credential', { username, password }).then(r => r.data),
+  linkWithCredentialMfa: (mfaSessionId: string, code: string) =>
+    api.post('/auth/link-credential-mfa', { mfaSessionId, code }).then(r => r.data),
   linkViaUrl: (callbackUrl: string, regionOverride?: string) =>
     api.post('/auth/link-via-url', { callbackUrl, regionOverride }).then(r => r.data),
   unlink: () =>

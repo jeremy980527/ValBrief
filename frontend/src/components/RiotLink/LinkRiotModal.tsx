@@ -1,52 +1,73 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Link2, ExternalLink, AlertCircle, ChevronDown, ClipboardPaste, RefreshCw, CheckCircle } from 'lucide-react'
+import { X, Link2, AlertCircle, Eye, EyeOff, Shield, ChevronDown, ClipboardPaste, CheckCircle } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
-
-const RIOT_AUTH_URL =
-  'https://auth.riotgames.com/authorize?' +
-  'redirect_uri=https%3A%2F%2Fplayvalorant.com%2Fopt_in' +
-  '&client_id=play-valorant-web-prod' +
-  '&response_type=token%20id_token' +
-  '&nonce=1' +
-  '&scope=openid%20link%20ban%20lol_region%20account'
-
-const REGIONS = [
-  { value: 'ap', label: '亞太 (AP)' },
-  { value: 'na', label: '北美 (NA)' },
-  { value: 'eu', label: '歐洲 (EU)' },
-  { value: 'kr', label: '韓國 (KR)' },
-  { value: 'latam', label: '拉美 (LATAM)' },
-  { value: 'br', label: '巴西 (BR)' },
-]
 
 interface Props { onClose: () => void; onLinked: () => void }
 
+type Step = 'credential' | 'mfa' | 'url'
+
 export default function LinkRiotModal({ onClose, onLinked }: Props) {
-  const { linkViaUrl } = useAuth()
-  const [opened, setOpened] = useState(false)
+  const { linkWithCredential, linkWithCredentialMfa, linkViaUrl } = useAuth()
+
+  const [step, setStep] = useState<Step>('credential')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [showPw, setShowPw] = useState(false)
+  const [mfaSessionId, setMfaSessionId] = useState('')
+  const [mfaEmail, setMfaEmail] = useState('')
+  const [mfaCode, setMfaCode] = useState('')
   const [callbackUrl, setCallbackUrl] = useState('')
-  const [regionOverride, setRegionOverride] = useState('ap')
-  const [showRegion, setShowRegion] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  function openRiot() {
-    window.open(RIOT_AUTH_URL, 'riot-login', 'width=520,height=720,left=200,top=80')
-    setOpened(true)
-    setError('')
+  async function handleCredential(e: React.FormEvent) {
+    e.preventDefault()
+    if (!username.trim() || !password) return
+    setLoading(true); setError('')
+    try {
+      const res = await linkWithCredential(username.trim(), password)
+      if (res.success) { onLinked(); return }
+      if (res.requiresMFA) {
+        setMfaSessionId(res.mfaSessionId)
+        setMfaEmail(res.mfaEmail || '')
+        setStep('mfa')
+        return
+      }
+      setError(res.error || '登入失敗，請確認帳號密碼')
+    } catch {
+      setError('連線失敗，請稍後再試')
+    } finally {
+      setLoading(false)
+    }
   }
 
-  async function submit(url: string) {
-    const trimmed = url.trim()
+  async function handleMfa(e: React.FormEvent) {
+    e.preventDefault()
+    if (!mfaCode.trim()) return
+    setLoading(true); setError('')
+    try {
+      const res = await linkWithCredentialMfa(mfaSessionId, mfaCode.trim())
+      if (res.success) { onLinked(); return }
+      setError(res.error || '驗證碼錯誤')
+    } catch {
+      setError('驗證失敗，請稍後再試')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleUrl(e: React.FormEvent) {
+    e.preventDefault()
+    const trimmed = callbackUrl.trim()
     if (!trimmed) return
     setLoading(true); setError('')
     try {
-      const res = await linkViaUrl(trimmed, showRegion ? regionOverride : undefined)
-      if (res.success) onLinked()
-      else setError(res.error || '連結失敗，請重試')
+      const res = await linkViaUrl(trimmed)
+      if (res.success) { onLinked(); return }
+      setError(res.error || '連結失敗，請重試')
     } catch {
-      setError('連線失敗，請確認後端正在運行')
+      setError('連線失敗，請稍後再試')
     } finally {
       setLoading(false)
     }
@@ -54,10 +75,9 @@ export default function LinkRiotModal({ onClose, onLinked }: Props) {
 
   function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
     const text = e.clipboardData.getData('text').trim()
-    if (text.includes('#access_token=') || text.includes('access_token=')) {
+    if (text.includes('access_token=')) {
       e.preventDefault()
       setCallbackUrl(text)
-      submit(text)
     }
   }
 
@@ -88,114 +108,182 @@ export default function LinkRiotModal({ onClose, onLinked }: Props) {
             </button>
           </div>
 
-          <div className="p-6 space-y-5">
-
-            {/* Steps */}
-            <div className="space-y-3">
-              {/* Step 1 */}
-              <div className="flex items-start gap-3">
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold mt-0.5 transition-colors ${opened ? 'bg-green-primary/20 text-green-primary' : 'bg-white/10 text-white/50'}`}>
-                  {opened ? <CheckCircle size={16} className="text-green-primary" /> : '1'}
-                </div>
-                <div className="flex-1">
-                  <p className={`text-sm font-medium transition-colors ${opened ? 'text-white/40 line-through' : 'text-white'}`}>
-                    點擊按鈕，在 Riot 官方視窗登入
+          <div className="p-6">
+            {/* Credential login (primary) */}
+            {step === 'credential' && (
+              <form onSubmit={handleCredential} className="space-y-4">
+                <div className="flex items-start gap-3 bg-green-primary/5 border border-green-primary/20 rounded-xl px-4 py-3">
+                  <Shield size={14} className="text-green-primary flex-shrink-0 mt-0.5" />
+                  <p className="text-white/50 text-xs leading-relaxed">
+                    帳密僅傳送給 Riot 官方伺服器取得 Token，<strong className="text-white/70">不會被儲存</strong>。此為社群工具的標準做法。
                   </p>
-                  {!opened && (
-                    <button onClick={openRiot} className="btn-primary mt-3 flex items-center gap-2 text-sm px-4 py-2">
-                      前往 Riot 登入
-                      <ExternalLink size={14} />
-                    </button>
-                  )}
-                  {opened && (
-                    <button onClick={openRiot} className="btn-ghost mt-2 flex items-center gap-1.5 text-xs px-3 py-1.5">
-                      <RefreshCw size={12} /> 重新開啟視窗
-                    </button>
-                  )}
                 </div>
-              </div>
 
-              {/* Step 2 */}
-              <div className="flex items-start gap-3">
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold mt-0.5 ${opened ? 'bg-green-primary text-black' : 'bg-white/10 text-white/30'}`}>
-                  2
-                </div>
-                <div className="flex-1">
-                  <p className={`text-sm font-medium ${opened ? 'text-white' : 'text-white/30'}`}>
-                    登入後複製網址，貼到下方
-                  </p>
-
-                  <AnimatePresence>
-                    {opened && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        className="mt-3 space-y-3"
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-white/50 text-xs mb-1.5 block">Riot 帳號 (Email 或用戶名)</label>
+                    <input
+                      type="text"
+                      className="input-field"
+                      placeholder="example@gmail.com 或 GameName"
+                      value={username}
+                      onChange={e => { setUsername(e.target.value); setError('') }}
+                      autoFocus
+                      autoComplete="username"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-white/50 text-xs mb-1.5 block">密碼</label>
+                    <div className="relative">
+                      <input
+                        type={showPw ? 'text' : 'password'}
+                        className="input-field pr-10"
+                        placeholder="••••••••"
+                        value={password}
+                        onChange={e => { setPassword(e.target.value); setError('') }}
+                        autoComplete="current-password"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPw(s => !s)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60"
                       >
-                        {/* URL example callout */}
-                        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-3 text-xs space-y-1.5">
-                          <p className="text-yellow-400 font-semibold">重要：看網址列，不是頁面內容</p>
-                          <p className="text-white/50">登入後你會看到 404 頁面，這是正常的。</p>
-                          <p className="text-white/50">網址列的網址長這樣，全部複製貼到下面：</p>
-                          <div className="bg-black/40 rounded-lg px-2.5 py-1.5 font-mono text-xs break-all">
-                            <span className="text-white/30">playvalorant.com/opt_in</span>
-                            <span className="text-green-primary">#access_token=eyJ...</span>
-                          </div>
-                        </div>
-
-                        {/* Paste field */}
-                        <div className="relative">
-                          <ClipboardPaste size={13} className="absolute left-3 top-3.5 text-white/20" />
-                          <textarea
-                            className="input-field pl-8 text-xs font-mono resize-none"
-                            rows={3}
-                            value={callbackUrl}
-                            onChange={e => { setCallbackUrl(e.target.value); setError('') }}
-                            onPaste={handlePaste}
-                            placeholder="https://playvalorant.com/opt_in#access_token=eyJ..."
-                            autoFocus
-                          />
-                        </div>
-
-                        {/* Region override */}
-                        <button
-                          type="button"
-                          onClick={() => setShowRegion(s => !s)}
-                          className="flex items-center gap-1.5 text-white/25 hover:text-white/50 text-xs transition-colors"
-                        >
-                          <ChevronDown size={12} className={`transition-transform ${showRegion ? 'rotate-180' : ''}`} />
-                          手動選擇地區（通常自動偵測）
-                        </button>
-                        {showRegion && (
-                          <select className="input-field text-sm" value={regionOverride} onChange={e => setRegionOverride(e.target.value)}>
-                            {REGIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                          </select>
-                        )}
-
-                        {error && (
-                          <div className="flex items-start gap-2 bg-val-red/10 border border-val-red/30 rounded-xl px-4 py-3">
-                            <AlertCircle size={14} className="text-val-red flex-shrink-0 mt-0.5" />
-                            <p className="text-val-red text-sm">{error}</p>
-                          </div>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={() => submit(callbackUrl)}
-                          disabled={loading || !callbackUrl.trim()}
-                          className="btn-primary w-full flex items-center justify-center gap-2"
-                        >
-                          {loading
-                            ? <><div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />驗證中...</>
-                            : '確認連結'}
-                        </button>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                        {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
 
+                {error && (
+                  <div className="flex items-start gap-2 bg-val-red/10 border border-val-red/30 rounded-xl px-4 py-3">
+                    <AlertCircle size={14} className="text-val-red flex-shrink-0 mt-0.5" />
+                    <p className="text-val-red text-sm">{error}</p>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading || !username.trim() || !password}
+                  className="btn-primary w-full flex items-center justify-center gap-2"
+                >
+                  {loading
+                    ? <><div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />登入中...</>
+                    : '連結 Riot 帳號'}
+                </button>
+
+                {/* URL paste fallback toggle */}
+                <button
+                  type="button"
+                  onClick={() => { setStep('url'); setError('') }}
+                  className="w-full flex items-center justify-center gap-1.5 text-white/25 hover:text-white/50 text-xs transition-colors py-1"
+                >
+                  <ChevronDown size={12} />
+                  改用「貼上網址」方式
+                </button>
+              </form>
+            )}
+
+            {/* 2FA */}
+            {step === 'mfa' && (
+              <form onSubmit={handleMfa} className="space-y-4">
+                <div className="text-center space-y-2">
+                  <div className="w-12 h-12 rounded-full bg-green-primary/10 border border-green-primary/20 flex items-center justify-center mx-auto">
+                    <Shield size={20} className="text-green-primary" />
+                  </div>
+                  <p className="text-white font-semibold">雙重驗證</p>
+                  {mfaEmail && <p className="text-white/40 text-sm">驗證碼已寄至 {mfaEmail}</p>}
+                </div>
+
+                <div>
+                  <label className="text-white/50 text-xs mb-1.5 block">6 位數驗證碼</label>
+                  <input
+                    type="text"
+                    className="input-field text-center text-2xl tracking-[0.5em] font-mono"
+                    placeholder="000000"
+                    maxLength={6}
+                    value={mfaCode}
+                    onChange={e => { setMfaCode(e.target.value.replace(/\D/g, '')); setError('') }}
+                    autoFocus
+                  />
+                </div>
+
+                {error && (
+                  <div className="flex items-start gap-2 bg-val-red/10 border border-val-red/30 rounded-xl px-4 py-3">
+                    <AlertCircle size={14} className="text-val-red flex-shrink-0 mt-0.5" />
+                    <p className="text-val-red text-sm">{error}</p>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading || mfaCode.length < 6}
+                  className="btn-primary w-full flex items-center justify-center gap-2"
+                >
+                  {loading
+                    ? <><div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />驗證中...</>
+                    : '確認驗證碼'}
+                </button>
+                <button type="button" onClick={() => { setStep('credential'); setError(''); setMfaCode('') }} className="btn-ghost w-full text-sm">
+                  返回
+                </button>
+              </form>
+            )}
+
+            {/* URL paste fallback */}
+            {step === 'url' && (
+              <form onSubmit={handleUrl} className="space-y-4">
+                <button
+                  type="button"
+                  onClick={() => { setStep('credential'); setError('') }}
+                  className="flex items-center gap-1.5 text-white/40 hover:text-white text-xs transition-colors"
+                >
+                  ← 返回帳密登入
+                </button>
+
+                <div className="space-y-1.5">
+                  <p className="text-white/50 text-xs">
+                    前往 <span className="text-white/70 font-mono text-[11px]">playvalorant.com/opt_in</span>，登入後複製網址列的網址（包含 <span className="text-green-primary font-mono">#access_token=...</span> 的部分）
+                  </p>
+                </div>
+
+                <div className="relative">
+                  <ClipboardPaste size={13} className="absolute left-3 top-3.5 text-white/20" />
+                  <textarea
+                    className="input-field pl-8 text-xs font-mono resize-none"
+                    rows={3}
+                    value={callbackUrl}
+                    onChange={e => { setCallbackUrl(e.target.value); setError('') }}
+                    onPaste={handlePaste}
+                    placeholder="https://playvalorant.com/opt_in#access_token=eyJ..."
+                    autoFocus
+                  />
+                </div>
+
+                {callbackUrl && callbackUrl.includes('access_token=') && (
+                  <div className="flex items-center gap-2 text-green-primary text-xs">
+                    <CheckCircle size={13} />
+                    已偵測到 Token
+                  </div>
+                )}
+
+                {error && (
+                  <div className="flex items-start gap-2 bg-val-red/10 border border-val-red/30 rounded-xl px-4 py-3">
+                    <AlertCircle size={14} className="text-val-red flex-shrink-0 mt-0.5" />
+                    <p className="text-val-red text-sm">{error}</p>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading || !callbackUrl.trim()}
+                  className="btn-primary w-full flex items-center justify-center gap-2"
+                >
+                  {loading
+                    ? <><div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />驗證中...</>
+                    : '確認連結'}
+                </button>
+              </form>
+            )}
           </div>
         </motion.div>
       </motion.div>
