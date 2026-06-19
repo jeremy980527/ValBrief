@@ -4,46 +4,82 @@ import axios from 'axios'
 const router = Router()
 let newsCache: { data: any; at: number } | null = null
 
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
 
-// rss2json.com acts as a proxy so VPS IP is never exposed to source sites
-async function fetchViaProxy(rssUrl: string): Promise<any[]> {
-  const r = await axios.get(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssUrl)}&count=15`, {
+// Parse RSS XML without external libraries
+function parseRssXml(xml: string, defaultCategory: string): any[] {
+  const items: any[] = []
+  const itemRe = /<item[^>]*>([\s\S]*?)<\/item>/gi
+  let m: RegExpExecArray | null
+  while ((m = itemRe.exec(xml)) !== null && items.length < 12) {
+    const b = m[1]
+    const get = (tag: string) => {
+      const r = b.match(new RegExp(`<${tag}[^>]*>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?<\\/${tag}>`, 'i'))
+      return (r?.[1] ?? '').trim()
+    }
+    const title = get('title')
+    const link = get('link') || get('guid')
+    if (!title || !link) continue
+    const desc = get('description').replace(/<[^>]+>/g, '').substring(0, 200)
+    const date = get('pubDate')
+    const cat = get('category') || defaultCategory
+    const thumb = b.match(/url="([^"]+\.(?:jpg|jpeg|png|gif|webp)[^"]*)"/i)?.[1]
+      || b.match(/<media:thumbnail[^>]+url="([^"]+)"/i)?.[1]
+      || null
+    items.push({ id: link, title, description: desc, url: link, thumbnail: thumb, date, category: cat })
+  }
+  return items
+}
+
+// allorigins.win: public CORS proxy — doesn't block VPS IPs and most news sites allow it
+async function fetchViaAllOrigins(rssUrl: string, defaultCategory: string): Promise<any[]> {
+  const r = await axios.get(`https://api.allorigins.win/raw?url=${encodeURIComponent(rssUrl)}`, {
     headers: { 'User-Agent': UA },
-    timeout: 15000,
+    timeout: 18000,
   })
-  if (r.data.status !== 'ok') throw new Error(`rss2json: ${r.data.message || 'error'}`)
-  const items: any[] = r.data.items || []
-  if (!items.length) throw new Error('empty result')
-  return items.slice(0, 12).map((item: any) => ({
-    id: item.guid || item.link || String(Math.random()),
-    title: item.title || '',
-    description: (item.description || '').replace(/<[^>]+>/g, '').substring(0, 200),
-    url: item.link || '',
-    thumbnail: item.thumbnail || item.enclosure?.link || null,
-    date: item.pubDate || '',
-    category: item.categories?.[0] || 'NEWS',
-  }))
+  const xml = typeof r.data === 'string' ? r.data : String(r.data)
+  if (!xml.includes('<item')) throw new Error('no <item> in response')
+  const items = parseRssXml(xml, defaultCategory)
+  if (!items.length) throw new Error('parsed 0 items')
+  return items
+}
+
+// Direct fetch — works for sites that don't block datacenter IPs
+async function fetchDirect(rssUrl: string, defaultCategory: string): Promise<any[]> {
+  const r = await axios.get(rssUrl, {
+    headers: { 'User-Agent': UA, Accept: 'application/rss+xml, application/xml, text/xml, */*' },
+    timeout: 12000,
+  })
+  const xml = typeof r.data === 'string' ? r.data : String(r.data)
+  if (!xml.includes('<item')) throw new Error('no <item> in response')
+  const items = parseRssXml(xml, defaultCategory)
+  if (!items.length) throw new Error('parsed 0 items')
+  return items
 }
 
 const SOURCES = [
-  // Official Valorant YouTube channel
-  { url: 'https://www.youtube.com/feeds/videos.xml?channel_id=UCZdB5P0a9OHIiNmMplvhA', category: 'VIDEO' },
-  // Dot Esports Valorant coverage
-  { url: 'https://dotesports.com/valorant/feed', category: null },
-  // PCGamer Valorant tag
-  { url: 'https://www.pcgamer.com/rss/', category: 'NEWS' },
+  { url: 'https://dotesports.com/valorant/feed', category: 'NEWS', label: 'Dot Esports' },
+  { url: 'https://www.pcgamer.com/rss/', category: 'NEWS', label: 'PC Gamer' },
+  { url: 'https://www.youtube.com/feeds/videos.xml?channel_id=UCZdB5P0a9OHIiNmMplvhA', category: 'VIDEO', label: 'YouTube' },
 ]
 
 async function fetchNews(): Promise<any[]> {
   for (const src of SOURCES) {
     try {
-      const items = await fetchViaProxy(src.url)
-      console.log(`[news] success from ${src.url}`)
-      if (src.category) return items.map(i => ({ ...i, category: src.category }))
+      const items = await fetchViaAllOrigins(src.url, src.category)
+      console.log(`[news] allorigins OK: ${src.label} (${items.length} items)`)
       return items
     } catch (e: any) {
-      console.warn(`[news] ${src.url} failed:`, e.message)
+      console.warn(`[news] allorigins ${src.label}: ${e.message}`)
+    }
+  }
+  for (const src of SOURCES) {
+    try {
+      const items = await fetchDirect(src.url, src.category)
+      console.log(`[news] direct OK: ${src.label}`)
+      return items
+    } catch (e: any) {
+      console.warn(`[news] direct ${src.label}: ${e.message}`)
     }
   }
   throw new Error('all news sources failed')

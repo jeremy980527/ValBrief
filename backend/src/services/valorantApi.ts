@@ -63,7 +63,6 @@ function riotHeaders(accessToken: string, entitlementToken: string, version: str
     'X-Riot-Entitlements-JWT': entitlementToken,
     'X-Riot-ClientVersion': version,
     'X-Riot-ClientPlatform': CLIENT_PLATFORM,
-    'Content-Type': 'application/json',
   }
 }
 
