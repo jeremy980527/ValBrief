@@ -1,16 +1,16 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Link2, AlertCircle, Eye, EyeOff, Shield, ChevronDown, ClipboardPaste, CheckCircle } from 'lucide-react'
+import { X, Link2, AlertCircle, Eye, EyeOff, Shield, ChevronDown, ClipboardPaste, CheckCircle, Monitor, Download, RefreshCw } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 
 interface Props { onClose: () => void; onLinked: () => void }
 
-type Step = 'credential' | 'mfa' | 'url'
+type Step = 'credential' | 'mfa' | 'url' | 'companion'
 
 export default function LinkRiotModal({ onClose, onLinked }: Props) {
-  const { linkWithCredential, linkWithCredentialMfa, linkViaUrl } = useAuth()
+  const { linkWithCredential, linkWithCredentialMfa, linkViaUrl, refreshUser } = useAuth()
 
-  const [step, setStep] = useState<Step>('credential')
+  const [step, setStep] = useState<Step>('companion')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
@@ -20,6 +20,7 @@ export default function LinkRiotModal({ onClose, onLinked }: Props) {
   const [callbackUrl, setCallbackUrl] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [companionDone, setCompanionDone] = useState(false)
 
   async function handleCredential(e: React.FormEvent) {
     e.preventDefault()
@@ -81,6 +82,38 @@ export default function LinkRiotModal({ onClose, onLinked }: Props) {
     }
   }
 
+  async function handleDownloadScript() {
+    setLoading(true); setError('')
+    try {
+      const res = await fetch('/api/auth/companion-script', { credentials: 'include' })
+      if (!res.ok) throw new Error('下載失敗')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'valbrief-companion.ps1'
+      a.click()
+      URL.revokeObjectURL(url)
+      setCompanionDone(false)
+    } catch {
+      setError('下載失敗，請重試')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleCompanionRefresh() {
+    setLoading(true)
+    try {
+      await refreshUser()
+      onLinked()
+    } catch {
+      setError('尚未偵測到連結，請先執行腳本再重試')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <AnimatePresence>
       <motion.div
@@ -109,9 +142,80 @@ export default function LinkRiotModal({ onClose, onLinked }: Props) {
           </div>
 
           <div className="p-6">
-            {/* Credential login (primary) */}
+
+            {/* Companion (primary) */}
+            {step === 'companion' && (
+              <div className="space-y-4">
+                <div className="flex items-start gap-3 bg-green-primary/5 border border-green-primary/20 rounded-xl px-4 py-3">
+                  <Monitor size={14} className="text-green-primary flex-shrink-0 mt-0.5" />
+                  <p className="text-white/50 text-xs leading-relaxed">
+                    下載並執行腳本，從你電腦上的 Riot Client 自動取得 Token，<strong className="text-white/70">不需要輸入帳號密碼</strong>。
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  {[
+                    '開啟 Riot Client（不需要進遊戲）',
+                    '點下方按鈕下載腳本',
+                    '右鍵點擊 .ps1 檔案 → 以 PowerShell 執行',
+                    '腳本完成後點「確認連結」',
+                  ].map((text, i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <span className="w-5 h-5 rounded-full bg-green-primary/20 text-green-primary text-xs flex items-center justify-center flex-shrink-0 font-bold">{i + 1}</span>
+                      <span className="text-white/60 text-sm">{text}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {error && (
+                  <div className="flex items-start gap-2 bg-val-red/10 border border-val-red/30 rounded-xl px-4 py-3">
+                    <AlertCircle size={14} className="text-val-red flex-shrink-0 mt-0.5" />
+                    <p className="text-val-red text-sm">{error}</p>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleDownloadScript}
+                  disabled={loading}
+                  className="btn-primary w-full flex items-center justify-center gap-2"
+                >
+                  {loading
+                    ? <><div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" />產生中...</>
+                    : <><Download size={15} />下載 Token 同步腳本</>}
+                </button>
+
+                <button
+                  onClick={handleCompanionRefresh}
+                  disabled={loading}
+                  className="btn-ghost w-full flex items-center justify-center gap-2 text-sm"
+                >
+                  <RefreshCw size={13} />
+                  執行完成後，點此確認連結
+                </button>
+
+                <div className="border-t border-border pt-3 flex gap-3 justify-center">
+                  <button
+                    type="button"
+                    onClick={() => { setStep('credential'); setError('') }}
+                    className="text-white/25 hover:text-white/50 text-xs transition-colors"
+                  >
+                    改用帳號密碼
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Credential login */}
             {step === 'credential' && (
               <form onSubmit={handleCredential} className="space-y-4">
+                <button
+                  type="button"
+                  onClick={() => { setStep('companion'); setError('') }}
+                  className="flex items-center gap-1.5 text-white/40 hover:text-white text-xs transition-colors"
+                >
+                  ← 返回腳本方式
+                </button>
+
                 <div className="flex items-start gap-3 bg-green-primary/5 border border-green-primary/20 rounded-xl px-4 py-3">
                   <Shield size={14} className="text-green-primary flex-shrink-0 mt-0.5" />
                   <p className="text-white/50 text-xs leading-relaxed">
@@ -171,7 +275,6 @@ export default function LinkRiotModal({ onClose, onLinked }: Props) {
                     : '連結 Riot 帳號'}
                 </button>
 
-                {/* URL paste fallback toggle */}
                 <button
                   type="button"
                   onClick={() => { setStep('url'); setError('') }}

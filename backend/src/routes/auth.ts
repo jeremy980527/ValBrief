@@ -3,6 +3,7 @@ import axios from 'axios'
 import { saveRiotTokens, clearRiotTokens } from '../db/users'
 import { requireInternalAuth } from '../middleware/auth'
 import { login as riotLogin, completeMFA } from '../services/riotAuth'
+import { createOtp, consumeOtp } from '../services/companionOtp'
 
 const router = Router()
 
@@ -133,6 +134,113 @@ router.post('/link-via-url', requireInternalAuth, async (req, res) => {
 router.delete('/link', requireInternalAuth, (req, res) => {
   clearRiotTokens(req.session.userId!)
   res.json({ success: true })
+})
+
+// Generate and serve a pre-configured PowerShell companion script
+router.get('/companion-script', requireInternalAuth, (req, res) => {
+  const code = createOtp(req.session.userId!)
+  const proto = (req.headers['x-forwarded-proto'] as string) || 'https'
+  const host = (req.headers['x-forwarded-host'] as string) || req.headers.host || 'localhost'
+  const serverUrl = `${proto}://${host}`
+
+  const script = `# ValBrief Companion - Token 同步工具
+# 此腳本由 ValBrief 自動產生，有效期 5 分鐘
+
+$ServerUrl = "${serverUrl}"
+$Code = "${code}"
+
+Write-Host ""
+Write-Host "ValBrief Companion - Riot Token 同步工具" -ForegroundColor Cyan
+Write-Host "==========================================" -ForegroundColor Cyan
+
+$lockfilePath = "$env:LOCALAPPDATA\\Riot Games\\Riot Client\\Config\\lockfile"
+if (-not (Test-Path $lockfilePath)) {
+    Write-Host ""
+    Write-Host "X  找不到 Riot Client lockfile" -ForegroundColor Red
+    Write-Host "   請先開啟 Riot Client（不需要進遊戲），再重新執行此腳本" -ForegroundColor Yellow
+    Read-Host "`n按 Enter 關閉"
+    exit 1
+}
+
+Write-Host "OK 找到 Riot Client" -ForegroundColor Green
+
+$lockfile = Get-Content $lockfilePath -Raw
+$parts = $lockfile.Trim().Split(':')
+$port = $parts[2]
+$password = $parts[3]
+
+# Riot Client 使用自簽憑證，需要略過驗證
+if (-not ([System.Management.Automation.PSTypeName]'ValBriefTrustAll').Type) {
+    Add-Type @"
+using System.Net; using System.Security.Cryptography.X509Certificates;
+public class ValBriefTrustAll : ICertificatePolicy {
+    public bool CheckValidationResult(ServicePoint sp, X509Certificate cert, WebRequest req, int problem) { return true; }
+}
+"@
+}
+[System.Net.ServicePointManager]::CertificatePolicy = New-Object ValBriefTrustAll
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+
+Write-Host "正在從 Riot Client 取得 Token..." -ForegroundColor Yellow
+
+$authBytes = [System.Text.Encoding]::ASCII.GetBytes("riot:$password")
+$authHeader = "Basic " + [Convert]::ToBase64String($authBytes)
+$localHeaders = @{ Authorization = $authHeader }
+
+try {
+    $tokenRes = Invoke-RestMethod -Uri "https://127.0.0.1:$port/entitlements/v1/token" -Headers $localHeaders -ErrorAction Stop
+    $accessToken = $tokenRes.accessToken
+    Write-Host "OK Token 取得成功" -ForegroundColor Green
+} catch {
+    Write-Host ""
+    Write-Host "X  無法取得 Token: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "   請確認 Riot Client 正在執行中" -ForegroundColor Yellow
+    Read-Host "`n按 Enter 關閉"
+    exit 1
+}
+
+Write-Host "正在同步至 ValBrief..." -ForegroundColor Yellow
+
+try {
+    $body = '{"code":"' + $Code + '","accessToken":"' + $accessToken + '"}'
+    $result = Invoke-RestMethod -Uri "$ServerUrl/api/auth/link-from-companion" -Method POST -Body $body -ContentType "application/json" -ErrorAction Stop
+
+    if ($result.success) {
+        Write-Host ""
+        Write-Host "OK 成功連結！$($result.gameName)#$($result.tagLine)" -ForegroundColor Green
+        Write-Host "   請回到 ValBrief 網站重新整理頁面" -ForegroundColor Cyan
+    } else {
+        Write-Host "X  失敗：$($result.error)" -ForegroundColor Red
+    }
+} catch {
+    Write-Host "X  連線失敗：$($_.Exception.Message)" -ForegroundColor Red
+}
+
+Read-Host "\`n按 Enter 關閉"
+`
+
+  res.setHeader('Content-Type', 'application/octet-stream')
+  res.setHeader('Content-Disposition', 'attachment; filename="valbrief-companion.ps1"')
+  res.send(script)
+})
+
+// Receive tokens from companion script (auth via OTP code, no session needed)
+router.post('/link-from-companion', async (req, res) => {
+  const { code, accessToken } = req.body
+  if (!code || !accessToken) return res.status(400).json({ success: false, error: '缺少參數' })
+
+  const userId = consumeOtp(code)
+  if (!userId) return res.status(401).json({ success: false, error: '驗證碼無效或已過期' })
+
+  try {
+    const tokens = await exchangeAccessToken(accessToken)
+    saveRiotTokens(userId, tokens)
+    console.log(`[companion] linked userId=${userId} gameName=${tokens.gameName}#${tokens.tagLine}`)
+    return res.json({ success: true, gameName: tokens.gameName, tagLine: tokens.tagLine })
+  } catch (e: any) {
+    console.error('[companion] exchangeAccessToken failed:', e.message)
+    return res.status(500).json({ success: false, error: '處理 Token 失敗：' + e.message })
+  }
 })
 
 export default router
