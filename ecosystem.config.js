@@ -2,8 +2,7 @@ module.exports = {
   apps: [{
     name: 'valbrief-backend',
     cwd: '/root/ValBrief/backend',
-    script: 'src/index.ts',
-    interpreter: 'ts-node',
+    script: 'dist/index.js',
     env: {
       NODE_ENV: 'production',
       PORT: 3001,
