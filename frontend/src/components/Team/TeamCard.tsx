@@ -21,7 +21,7 @@ interface Props {
 
 export default function TeamCard({ post, onDelete }: Props) {
   const { user } = useAuth()
-  const isOwn = user?.gameName === post.gameName && user?.tagLine === post.tagLine
+  const isOwn = user?.riotGameName === post.gameName && user?.riotTagLine === post.tagLine
 
   return (
     <motion.div variants={fadeUp} className="card p-5 group">
