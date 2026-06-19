@@ -41,6 +41,29 @@ export async function getClientVersion(): Promise<string> {
   }
 }
 
+export async function processStorefrontPanel(panel: any) {
+  const skins = await buildSkinMap()
+  const offers: any[] = panel.SingleItemStoreOffers || []
+  const items = await Promise.all(
+    (panel.SingleItemOffers as string[]).map(async (uuid: string, i: number) => {
+      const price = offers[i]?.Cost?.['85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741'] || 0
+      const entry = skins.get(uuid)
+      if (!entry) return { offerId: uuid, name: 'Unknown Skin', price, image: null, video: null, tier: 'Select', tierColor: '#009ef7' }
+      const { skin, level } = entry
+      return {
+        offerId: uuid,
+        name: skin.displayName,
+        price,
+        image: level.displayIcon || skin.displayIcon,
+        video: level.streamedVideo || null,
+        tier: TIER_NAMES[skin.contentTierUuid] || 'Select',
+        tierColor: TIER_COLORS[skin.contentTierUuid] || '#009ef7',
+      }
+    })
+  )
+  return { items, remainingSeconds: panel.SingleItemOffersRemainingDurationInSeconds as number }
+}
+
 async function buildSkinMap(): Promise<Map<string, any>> {
   if (skinLevelMap) return skinLevelMap
   const r = await axios.get(`${VAPI}/weapons/skins?language=zh-TW`)

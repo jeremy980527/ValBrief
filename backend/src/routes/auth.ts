@@ -1,9 +1,10 @@
 import { Router } from 'express'
 import axios from 'axios'
-import { saveRiotTokens, clearRiotTokens } from '../db/users'
+import { saveRiotTokens, clearRiotTokens, saveShopSnapshot } from '../db/users'
 import { requireInternalAuth } from '../middleware/auth'
 import { login as riotLogin, completeMFA } from '../services/riotAuth'
 import { createOtp, consumeOtp } from '../services/companionOtp'
+import { processStorefrontPanel } from '../services/valorantApi'
 
 const router = Router()
 
@@ -223,6 +224,23 @@ try {
     Write-Host "警告：無法偵測地區，使用預設 ap" -ForegroundColor Yellow
 }
 
+Write-Host "正在取得今日商店..." -ForegroundColor Yellow
+$shopRaw = $null
+try {
+    $verRes = Invoke-RestMethod -Uri "https://valorant-api.com/v1/version" -ErrorAction Stop
+    $clientVersion = $verRes.data.riotClientVersion
+    $storeHeaders = @{
+        Authorization = "Bearer $accessToken"
+        "X-Riot-Entitlements-JWT" = $entitlementToken
+        "X-Riot-ClientVersion" = $clientVersion
+        "X-Riot-ClientPlatform" = "ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiLA0KCSJwbGF0Zm9ybU9TIjogIldpbmRvd3MiLA0KCSJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwNCgkicGxhdGZvcm1DaGlwc2V0IjogIlVua25vd24iDQp9"
+    }
+    $shopRaw = Invoke-RestMethod -Uri "https://pd.$region.a.pvp.net/store/v2/storefront/$puuid" -Headers $storeHeaders -ErrorAction Stop
+    Write-Host "OK 商店資料取得成功" -ForegroundColor Green
+} catch {
+    Write-Host "警告：無法取得商店資料：$($_.Exception.Message)" -ForegroundColor Yellow
+}
+
 Write-Host "正在同步至 ValBrief..." -ForegroundColor Yellow
 
 try {
@@ -234,8 +252,9 @@ try {
         gameName = $gameName
         tagLine = $tagLine
         region = $region
+        shopRaw = $shopRaw
     }
-    $body = $payload | ConvertTo-Json -Compress
+    $body = $payload | ConvertTo-Json -Depth 20 -Compress
     $result = Invoke-RestMethod -Uri "$ServerUrl/api/auth/link-from-companion" -Method POST -Body $body -ContentType "application/json" -ErrorAction Stop
 
     if ($result.success) {
@@ -263,7 +282,7 @@ Write-Host ""; Read-Host "按 Enter 關閉"
 
 // Receive tokens from companion script (auth via OTP code, no session needed)
 router.post('/link-from-companion', async (req, res) => {
-  const { code, accessToken, entitlementToken, puuid, gameName, tagLine, region } = req.body
+  const { code, accessToken, entitlementToken, puuid, gameName, tagLine, region, shopRaw } = req.body
   if (!code || !accessToken) return res.status(400).json({ success: false, error: '缺少參數' })
 
   const userId = consumeOtp(code)
@@ -271,7 +290,6 @@ router.post('/link-from-companion', async (req, res) => {
 
   try {
     if (entitlementToken && puuid) {
-      // Script provided all tokens — save directly, no VPS→Riot calls needed
       saveRiotTokens(userId, {
         accessToken,
         entitlementToken,
@@ -281,10 +299,22 @@ router.post('/link-from-companion', async (req, res) => {
         tagLine: tagLine || '',
       })
       console.log(`[companion] linked userId=${userId} gameName=${gameName}#${tagLine}`)
+
+      // Save shop snapshot if script fetched store data from user's machine
+      if (shopRaw?.SkinsPanelLayout) {
+        try {
+          const snapshot = await processStorefrontPanel(shopRaw.SkinsPanelLayout)
+          saveShopSnapshot(userId, { ...snapshot, fetchedAt: Date.now() })
+          console.log(`[companion] shop snapshot saved (${snapshot.items.length} items)`)
+        } catch (e: any) {
+          console.warn('[companion] shop snapshot failed:', e.message)
+        }
+      }
+
       return res.json({ success: true, gameName, tagLine })
     }
 
-    // Fallback for old scripts: exchange via backend
+    // Fallback for old scripts
     const tokens = await exchangeAccessToken(accessToken)
     saveRiotTokens(userId, tokens)
     console.log(`[companion] linked userId=${userId} gameName=${tokens.gameName}#${tokens.tagLine}`)

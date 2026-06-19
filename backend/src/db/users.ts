@@ -15,12 +15,29 @@ export interface RiotTokens {
   linkedAt: string
 }
 
+export interface ProcessedShopItem {
+  offerId: string
+  name: string
+  price: number
+  image: string | null
+  video: string | null
+  tier: string
+  tierColor: string
+}
+
+export interface ShopSnapshot {
+  items: ProcessedShopItem[]
+  remainingSeconds: number
+  fetchedAt: number
+}
+
 export interface User {
   id: string
   email: string
   username: string
   passwordHash: string
   riotTokens?: RiotTokens
+  shopSnapshot?: ShopSnapshot
   createdAt: string
 }
 
@@ -82,4 +99,12 @@ export function clearRiotTokens(userId: string) {
   const db = readDB()
   const user = db.users.find(u => u.id === userId)
   if (user) { delete user.riotTokens; writeDB(db) }
+}
+
+export function saveShopSnapshot(userId: string, snapshot: ShopSnapshot) {
+  const db = readDB()
+  const user = db.users.find(u => u.id === userId)
+  if (!user) throw new Error('User not found')
+  user.shopSnapshot = snapshot
+  writeDB(db)
 }
