@@ -122,16 +122,18 @@ export async function getStorefrontViaHenrik(
   region: string,
 ) {
   const HENRIK_API = 'https://api.henrikdev.xyz'
-  const url = `${HENRIK_API}/valorant/v2/store/${region}/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`
+  // HenrikDev storefront endpoint: proxies the request to Riot's API using the provided user tokens
+  const url = `${HENRIK_API}/valorant/v2/storefront/${region}/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`
   console.log(`[shop] HenrikDev GET ${url}`)
 
-  const r = await axios.get(url, {
-    headers: {
-      Authorization: accessToken,
-      'X-Riot-Entitlements-JWT': entitlementToken,
-    },
-    timeout: 15000,
-  })
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${accessToken}`,
+    'X-Riot-Entitlements-JWT': entitlementToken,
+  }
+  const apiKey = process.env.HENRIK_API_KEY
+  if (apiKey) headers['x-api-key'] = apiKey
+
+  const r = await axios.get(url, { headers, timeout: 15000 })
 
   const hData = r.data?.data
   if (!hData) throw new Error('HenrikDev response missing data field')
