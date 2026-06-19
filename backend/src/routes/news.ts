@@ -4,72 +4,54 @@ import axios from 'axios'
 const router = Router()
 let newsCache: { data: any; at: number } | null = null
 
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
 
-function extractNextData(html: string): any[] {
-  const m = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/)
-  if (!m) return []
-  try {
-    const data = JSON.parse(m[1])
-    const props = data?.props?.pageProps
-    return props?.articles || props?.data?.articles || props?.entries || []
-  } catch { return [] }
-}
-
-async function fetchFromPlayvalorant(): Promise<any[]> {
-  const r = await axios.get('https://playvalorant.com/en-us/news/', {
-    headers: { 'User-Agent': UA, Accept: 'text/html' },
+// rss2json.com acts as a proxy so VPS IP is never exposed to source sites
+async function fetchViaProxy(rssUrl: string): Promise<any[]> {
+  const r = await axios.get(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssUrl)}&count=15`, {
+    headers: { 'User-Agent': UA },
     timeout: 15000,
   })
-  const articles = extractNextData(r.data as string)
-  if (!articles.length) throw new Error('no articles in __NEXT_DATA__')
-  return articles.slice(0, 20).map((a: any) => ({
-    id: a.uid || a.id || String(Math.random()),
-    title: a.title || a.heading || '',
-    description: a.description || a.summary || '',
-    url: a.url?.url ? `https://playvalorant.com${a.url.url}` : (a.externalLink || 'https://playvalorant.com/en-us/news/'),
-    thumbnail: a.banner?.url || a.image?.url || null,
-    date: a.date || a.publishedAt || '',
-    category: a.category?.[0]?.title || 'NEWS',
+  if (r.data.status !== 'ok') throw new Error(`rss2json: ${r.data.message || 'error'}`)
+  const items: any[] = r.data.items || []
+  if (!items.length) throw new Error('empty result')
+  return items.slice(0, 12).map((item: any) => ({
+    id: item.guid || item.link || String(Math.random()),
+    title: item.title || '',
+    description: (item.description || '').replace(/<[^>]+>/g, '').substring(0, 200),
+    url: item.link || '',
+    thumbnail: item.thumbnail || item.enclosure?.link || null,
+    date: item.pubDate || '',
+    category: item.categories?.[0] || 'NEWS',
   }))
 }
 
-async function fetchFromReddit(): Promise<any[]> {
-  const r = await axios.get('https://www.reddit.com/r/VALORANT/hot.json?limit=20&raw_json=1', {
-    headers: { 'User-Agent': 'ValBrief/1.0' },
-    timeout: 10000,
-  })
-  const posts: any[] = (r.data?.data?.children || [])
-    .filter((p: any) => !p.data.stickied)
-    .slice(0, 12)
-  return posts.map((p: any) => ({
-    id: p.data.id,
-    title: p.data.title,
-    description: '',
-    url: p.data.url?.startsWith('http') ? p.data.url : `https://www.reddit.com${p.data.permalink}`,
-    thumbnail: (p.data.thumbnail?.startsWith('http')) ? p.data.thumbnail : null,
-    date: new Date(p.data.created_utc * 1000).toISOString(),
-    category: p.data.link_flair_text || 'COMMUNITY',
-  }))
-}
+const SOURCES = [
+  // Official Valorant YouTube channel
+  { url: 'https://www.youtube.com/feeds/videos.xml?channel_id=UCZdB5P0a9OHIiNmMplvhA', category: 'VIDEO' },
+  // Dot Esports Valorant coverage
+  { url: 'https://dotesports.com/valorant/feed', category: null },
+  // PCGamer Valorant tag
+  { url: 'https://www.pcgamer.com/rss/', category: 'NEWS' },
+]
 
-async function fetchNews() {
-  try {
-    return await fetchFromPlayvalorant()
-  } catch (e1: any) {
-    console.warn('[news] playvalorant.com failed:', e1.message, '— trying reddit')
+async function fetchNews(): Promise<any[]> {
+  for (const src of SOURCES) {
     try {
-      return await fetchFromReddit()
-    } catch (e2: any) {
-      console.error('[news] all sources failed:', e2.message)
-      throw e2
+      const items = await fetchViaProxy(src.url)
+      console.log(`[news] success from ${src.url}`)
+      if (src.category) return items.map(i => ({ ...i, category: src.category }))
+      return items
+    } catch (e: any) {
+      console.warn(`[news] ${src.url} failed:`, e.message)
     }
   }
+  throw new Error('all news sources failed')
 }
 
 router.get('/', async (_req, res) => {
   try {
-    if (newsCache && Date.now() - newsCache.at < 300000) {
+    if (newsCache && Date.now() - newsCache.at < 600000) {
       return res.json(newsCache.data)
     }
     const articles = await fetchNews()
