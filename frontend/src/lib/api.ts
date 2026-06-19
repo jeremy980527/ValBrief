@@ -2,13 +2,24 @@ import axios from 'axios'
 
 const api = axios.create({ baseURL: '/api', withCredentials: true })
 
+export const userApi = {
+  register: (email: string, username: string, password: string) =>
+    api.post('/users/register', { email, username, password }).then(r => r.data),
+  login: (email: string, password: string) =>
+    api.post('/users/login', { email, password }).then(r => r.data),
+  logout: () => api.post('/users/logout').then(r => r.data),
+  me: () => api.get('/users/me').then(r => r.data),
+}
+
 export const authApi = {
-  login: (username: string, password: string) =>
-    api.post('/auth/login', { username, password }).then(r => r.data),
+  link: (username: string, password: string) =>
+    api.post('/auth/link', { username, password }).then(r => r.data),
   mfa: (code: string) =>
     api.post('/auth/mfa', { code }).then(r => r.data),
-  logout: () => api.post('/auth/logout').then(r => r.data),
-  me: () => api.get('/auth/me').then(r => r.data),
+  linkManual: (data: any) =>
+    api.post('/auth/link/manual', data).then(r => r.data),
+  unlink: () =>
+    api.delete('/auth/link').then(r => r.data),
 }
 
 export const shopApi = {

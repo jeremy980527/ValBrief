@@ -1,13 +1,18 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import { authApi } from '../lib/api'
+import { userApi, authApi } from '../lib/api'
 import { User } from '../types'
 
 interface AuthCtx {
   user: User | null
   loading: boolean
-  login: (username: string, password: string) => Promise<{ success?: boolean; requiresMFA?: boolean; mfaEmail?: string; error?: string }>
-  submitMFA: (code: string) => Promise<{ success?: boolean; error?: string }>
+  login: (email: string, password: string) => Promise<any>
+  register: (email: string, username: string, password: string) => Promise<any>
   logout: () => Promise<void>
+  refreshUser: () => Promise<void>
+  linkRiot: (username: string, password: string) => Promise<any>
+  linkRiotManual: (data: any) => Promise<any>
+  mfa: (code: string) => Promise<any>
+  unlinkRiot: () => Promise<void>
 }
 
 const Ctx = createContext<AuthCtx | null>(null)
@@ -16,37 +21,64 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    authApi.me()
-      .then(setUser)
-      .catch(() => setUser(null))
-      .finally(() => setLoading(false))
+  const refreshUser = useCallback(async () => {
+    try {
+      const data = await userApi.me()
+      setUser(data)
+    } catch {
+      setUser(null)
+    }
   }, [])
 
-  const login = useCallback(async (username: string, password: string) => {
-    const data = await authApi.login(username, password)
-    if (data.success) {
-      const me = await authApi.me()
-      setUser(me)
-    }
+  useEffect(() => {
+    refreshUser().finally(() => setLoading(false))
+  }, [refreshUser])
+
+  const login = useCallback(async (email: string, password: string) => {
+    const data = await userApi.login(email, password)
+    if (data.success) setUser(data)
     return data
   }, [])
 
-  const submitMFA = useCallback(async (code: string) => {
-    const data = await authApi.mfa(code)
-    if (data.success) {
-      const me = await authApi.me()
-      setUser(me)
-    }
+  const register = useCallback(async (email: string, username: string, password: string) => {
+    const data = await userApi.register(email, username, password)
+    if (data.success) setUser(data)
     return data
   }, [])
 
   const logout = useCallback(async () => {
-    await authApi.logout()
+    await userApi.logout()
     setUser(null)
   }, [])
 
-  return <Ctx.Provider value={{ user, loading, login, submitMFA, logout }}>{children}</Ctx.Provider>
+  const linkRiot = useCallback(async (username: string, password: string) => {
+    const data = await authApi.link(username, password)
+    if (data.success) await refreshUser()
+    return data
+  }, [refreshUser])
+
+  const linkRiotManual = useCallback(async (tokens: any) => {
+    const data = await authApi.linkManual(tokens)
+    if (data.success) await refreshUser()
+    return data
+  }, [refreshUser])
+
+  const mfa = useCallback(async (code: string) => {
+    const data = await authApi.mfa(code)
+    if (data.success) await refreshUser()
+    return data
+  }, [refreshUser])
+
+  const unlinkRiot = useCallback(async () => {
+    await authApi.unlink()
+    await refreshUser()
+  }, [refreshUser])
+
+  return (
+    <Ctx.Provider value={{ user, loading, login, register, logout, refreshUser, linkRiot, linkRiotManual, mfa, unlinkRiot }}>
+      {children}
+    </Ctx.Provider>
+  )
 }
 
 export function useAuth() {

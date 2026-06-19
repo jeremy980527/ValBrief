@@ -1,12 +1,12 @@
 import { Router } from 'express'
-import { requireAuth } from '../middleware/auth'
+import { requireRiotAuth } from '../middleware/auth'
 import { getMissions } from '../services/valorantApi'
 
 const router = Router()
 
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', requireRiotAuth, async (req, res) => {
   try {
-    const { accessToken, entitlementToken, puuid, region } = req.session as any
+    const { accessToken, entitlementToken, puuid, region } = (req as any).riotTokens
     const missions = await getMissions(accessToken, entitlementToken, puuid, region)
     res.json({ missions })
   } catch (e: any) {

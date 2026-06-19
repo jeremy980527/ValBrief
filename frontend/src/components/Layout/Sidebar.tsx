@@ -1,6 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ShoppingBag, Users, Target, Newspaper, LogOut, Home } from 'lucide-react'
+import { ShoppingBag, Users, Target, Newspaper, LogOut, Home, Link2, LinkIcon } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 
 const links = [
@@ -19,6 +19,9 @@ export default function Sidebar() {
     await logout()
     navigate('/login')
   }
+
+  const displayName = user?.username || ''
+  const avatarChar = displayName[0]?.toUpperCase() || '?'
 
   return (
     <motion.aside
@@ -45,12 +48,30 @@ export default function Sidebar() {
         <div className="mx-4 mb-4 p-3 rounded-xl bg-bg-secondary border border-border">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-full bg-green-primary/20 border border-green-primary/30 flex items-center justify-center flex-shrink-0">
-              <span className="text-green-primary font-bold text-sm">{user.gameName[0]?.toUpperCase()}</span>
+              <span className="text-green-primary font-bold text-sm">{avatarChar}</span>
             </div>
-            <div className="overflow-hidden">
-              <p className="text-white text-sm font-semibold truncate">{user.gameName}</p>
-              <p className="text-white/40 text-xs">#{user.tagLine}</p>
+            <div className="overflow-hidden flex-1">
+              <p className="text-white text-sm font-semibold truncate">{displayName}</p>
+              {user.riotLinked && user.riotGameName ? (
+                <p className="text-white/40 text-xs truncate">{user.riotGameName}#{user.riotTagLine}</p>
+              ) : (
+                <p className="text-white/30 text-xs">{user.email}</p>
+              )}
             </div>
+          </div>
+          {/* Riot link status */}
+          <div className="mt-2 pt-2 border-t border-border/50">
+            {user.riotLinked ? (
+              <div className="flex items-center gap-1.5">
+                <LinkIcon size={10} className="text-green-primary" />
+                <span className="text-green-primary text-xs">Riot 已連結</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <Link2 size={10} className="text-white/30" />
+                <span className="text-white/30 text-xs">Riot 未連結</span>
+              </div>
+            )}
           </div>
         </div>
       )}

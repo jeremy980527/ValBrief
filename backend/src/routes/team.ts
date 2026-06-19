@@ -1,6 +1,7 @@
 import { Router } from 'express'
 import { v4 as uuidv4 } from 'uuid'
-import { requireAuth } from '../middleware/auth'
+import { requireInternalAuth } from '../middleware/auth'
+import { getUserById } from '../db/users'
 
 const router = Router()
 
@@ -41,12 +42,16 @@ router.get('/', (_req, res) => {
   res.json({ posts: posts.slice().reverse() })
 })
 
-router.post('/', requireAuth, (req, res) => {
+router.post('/', requireInternalAuth, (req, res) => {
   const { rank, rankColor, roles, agents, language, description, discord } = req.body
+  const user = getUserById(req.session.userId!)
+  const gameName = user?.riotTokens?.gameName || user?.username || 'Anonymous'
+  const tagLine = user?.riotTokens?.tagLine || '0000'
+  const region = user?.riotTokens?.region || 'ap'
   const post: TeamPost = {
     id: uuidv4(),
-    gameName: req.session.gameName || 'Anonymous',
-    tagLine: req.session.tagLine || '0000',
+    gameName,
+    tagLine,
     rank: rank || 'Unranked',
     rankColor: rankColor || '#888',
     roles: roles || [],
@@ -54,14 +59,14 @@ router.post('/', requireAuth, (req, res) => {
     language: language || 'Any',
     description: description || '',
     discord,
-    region: req.session.region || 'ap',
+    region,
     createdAt: new Date().toISOString(),
   }
   posts.push(post)
   res.json({ success: true, post })
 })
 
-router.delete('/:id', requireAuth, (req, res) => {
+router.delete('/:id', requireInternalAuth, (req, res) => {
   const idx = posts.findIndex(p => p.id === req.params.id)
   if (idx === -1) return res.status(404).json({ error: 'Not found' })
   posts.splice(idx, 1)

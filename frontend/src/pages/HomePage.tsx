@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
-import { ShoppingBag, Target, Users, Newspaper, ChevronRight, TrendingUp } from 'lucide-react'
+import { ShoppingBag, Target, Users, Newspaper, ChevronRight, TrendingUp, Link2, AlertTriangle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import PageTransition, { stagger, fadeUp } from '../components/ui/PageTransition'
+import LinkRiotModal from '../components/RiotLink/LinkRiotModal'
 
 const cards = [
   { to: '/shop', icon: ShoppingBag, label: '每日商店', desc: '今日特價武器皮膚', color: '#c975e2', bg: 'rgba(201,117,226,0.08)' },
@@ -19,8 +21,14 @@ function greeting() {
 }
 
 export default function HomePage() {
-  const { user } = useAuth()
+  const { user, refreshUser } = useAuth()
   const navigate = useNavigate()
+  const [showLinkModal, setShowLinkModal] = useState(false)
+
+  function handleLinked() {
+    setShowLinkModal(false)
+    refreshUser()
+  }
 
   return (
     <PageTransition>
@@ -29,13 +37,33 @@ export default function HomePage() {
         <motion.div variants={fadeUp} className="mb-10">
           <p className="text-white/40 text-sm font-medium uppercase tracking-widest mb-2">{greeting()}，特工</p>
           <h1 className="text-4xl font-black text-white leading-tight">
-            {user?.gameName
-              ? <><span className="text-gradient">{user.gameName}</span><span className="text-white/30 text-2xl ml-2">#{user.tagLine}</span></>
-              : <span className="text-gradient">Val<span className="text-white">Brief</span></span>
+            {user?.riotLinked && user.riotGameName
+              ? <><span className="text-gradient">{user.riotGameName}</span><span className="text-white/30 text-2xl ml-2">#{user.riotTagLine}</span></>
+              : <><span className="text-gradient">{user?.username}</span></>
             }
           </h1>
           <p className="text-white/40 mt-2">你的 Valorant 任務控制中心</p>
         </motion.div>
+
+        {/* Riot not linked banner */}
+        {user && !user.riotLinked && (
+          <motion.div variants={fadeUp} className="mb-6 flex items-center gap-4 bg-yellow-500/10 border border-yellow-500/30 rounded-2xl p-4">
+            <div className="w-10 h-10 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center flex-shrink-0">
+              <AlertTriangle size={18} className="text-yellow-400" />
+            </div>
+            <div className="flex-1">
+              <p className="text-white font-semibold text-sm">Riot 帳號未連結</p>
+              <p className="text-white/40 text-xs mt-0.5">連結後可查看每日商店與任務</p>
+            </div>
+            <button
+              onClick={() => setShowLinkModal(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-primary text-black text-sm font-bold hover:bg-green-primary/90 transition-colors flex-shrink-0"
+            >
+              <Link2 size={14} />
+              連結帳號
+            </button>
+          </motion.div>
+        )}
 
         {/* Quick stat */}
         <motion.div variants={fadeUp} className="card p-5 mb-8 flex items-center gap-4">
@@ -84,6 +112,10 @@ export default function HomePage() {
           ))}
         </motion.div>
       </div>
+
+      {showLinkModal && (
+        <LinkRiotModal onClose={() => setShowLinkModal(false)} onLinked={handleLinked} />
+      )}
     </PageTransition>
   )
 }

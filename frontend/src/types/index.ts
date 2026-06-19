@@ -1,8 +1,11 @@
 export interface User {
-  gameName: string
-  tagLine: string
-  region: string
-  puuid: string
+  id: string
+  email: string
+  username: string
+  riotLinked: boolean
+  riotGameName?: string
+  riotTagLine?: string
+  riotRegion?: string
 }
 
 export interface ShopItem {

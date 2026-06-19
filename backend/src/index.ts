@@ -6,15 +6,11 @@ import shopRouter from './routes/shop'
 import missionsRouter from './routes/missions'
 import newsRouter from './routes/news'
 import teamRouter from './routes/team'
+import usersRouter from './routes/users'
 
 declare module 'express-session' {
   interface SessionData {
-    accessToken?: string
-    entitlementToken?: string
-    puuid?: string
-    region?: string
-    gameName?: string
-    tagLine?: string
+    userId?: string
     pendingMfaId?: string
   }
 }
@@ -31,6 +27,7 @@ app.use(session({
   cookie: { secure: false, httpOnly: true, maxAge: 86400000 },
 }))
 
+app.use('/api/users', usersRouter)
 app.use('/api/auth', authRouter)
 app.use('/api/shop', shopRouter)
 app.use('/api/missions', missionsRouter)
