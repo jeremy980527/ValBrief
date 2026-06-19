@@ -52,7 +52,7 @@ router.get('/', async (_req, res) => {
       throw new Error('HenrikDev returned no articles')
     }
 
-    const articles = rawArticles.map((a: any) => ({
+    const articles = rawArticles.slice(0, 30).map((a: any) => ({
       id: a.url,
       title: a.title,
       description: '',
