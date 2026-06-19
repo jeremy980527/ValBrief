@@ -59,22 +59,24 @@ function riotHeaders(accessToken: string, entitlementToken: string, version: str
 
 async function fetchStorefrontRaw(accessToken: string, entitlementToken: string, puuid: string, region: string, version: string) {
   const headers = riotHeaders(accessToken, entitlementToken, version)
-  console.log(`[shop] region=${region} puuid=${puuid.substring(0, 8)}... version=${version}`)
-  // Try v3 first, fall back to v2
+  console.log(`[shop] region=${region} puuid=${puuid.substring(0, 8)}...`)
+
+  let lastErr: any
   for (const ver of ['v3', 'v2']) {
     try {
       const url = `${pdUrl(region)}/store/${ver}/storefront/${puuid}`
-      console.log(`[shop] trying ${url.replace(puuid, puuid.substring(0,8)+'...')}`)
-      const r = await axios.get(url, { headers, timeout: 10000 })
+      console.log(`[shop] trying ${ver}`)
+      const r = await axios.get(url, { headers, timeout: 12000 })
       console.log(`[shop] success with ${ver}`)
       return r.data
     } catch (e: any) {
-      console.error(`[shop] ${ver} error: status=${e?.response?.status} body=${JSON.stringify(e?.response?.data)} msg=${e.message}`)
-      if (ver === 'v3' && e?.response?.status === 404) continue
-      throw e
+      console.error(`[shop] ${ver} status=${e?.response?.status} body=${JSON.stringify(e?.response?.data)}`)
+      lastErr = e
+      // always fall through to next version
+      continue
     }
   }
-  throw new Error('storefront unreachable')
+  throw lastErr ?? new Error('storefront unreachable')
 }
 
 export async function getStorefront(accessToken: string, entitlementToken: string, puuid: string, region: string) {
