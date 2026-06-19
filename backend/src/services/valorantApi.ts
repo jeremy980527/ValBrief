@@ -114,6 +114,53 @@ export async function getStorefront(accessToken: string, entitlementToken: strin
   return { items, remainingSeconds: panel.SingleItemOffersRemainingDurationInSeconds }
 }
 
+export async function getStorefrontViaHenrik(
+  accessToken: string,
+  entitlementToken: string,
+  gameName: string,
+  tagLine: string,
+  region: string,
+) {
+  const HENRIK_API = 'https://api.henrikdev.xyz'
+  const url = `${HENRIK_API}/valorant/v2/store/${region}/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`
+  console.log(`[shop] HenrikDev GET ${url}`)
+
+  const r = await axios.get(url, {
+    headers: {
+      Authorization: accessToken,
+      'X-Riot-Entitlements-JWT': entitlementToken,
+    },
+    timeout: 15000,
+  })
+
+  const hData = r.data?.data
+  if (!hData) throw new Error('HenrikDev response missing data field')
+
+  const skins = await buildSkinMap()
+  const panel = hData.SkinsPanelLayout ?? hData
+  const offers: any[] = panel.SingleItemStoreOffers || []
+
+  const items = await Promise.all(
+    (panel.SingleItemOffers as string[]).map(async (uuid: string, i: number) => {
+      const price = offers[i]?.Cost?.['85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741'] || 0
+      const entry = skins.get(uuid)
+      if (!entry) return { offerId: uuid, name: 'Unknown Skin', price, image: null, video: null, tier: 'Select', tierColor: '#009ef7' }
+      const { skin, level } = entry
+      return {
+        offerId: uuid,
+        name: skin.displayName,
+        price,
+        image: level.displayIcon || skin.displayIcon,
+        video: level.streamedVideo || null,
+        tier: TIER_NAMES[skin.contentTierUuid] || 'Select',
+        tierColor: TIER_COLORS[skin.contentTierUuid] || '#009ef7',
+      }
+    })
+  )
+
+  return { items, remainingSeconds: panel.SingleItemOffersRemainingDurationInSeconds }
+}
+
 export async function getMissions(accessToken: string, entitlementToken: string, puuid: string, region: string) {
   const version = await getClientVersion()
   const [contractsRes, defsRes] = await Promise.all([
