@@ -5,29 +5,47 @@ import { requireInternalAuth } from '../middleware/auth'
 
 const router = Router()
 
+const RIOT_UA = 'RiotClient/60.0.6.4875858.4789607 rso-auth/1.0.0.0 riot (Windows;10;;Professional, x64)'
+
 async function exchangeAccessToken(accessToken: string, regionOverride?: string) {
   const entRes = await axios.post(
     'https://entitlements.auth.riotgames.com/api/token/v1',
     {},
-    { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        'User-Agent': RIOT_UA,
+      },
+    }
   )
   const entitlementToken: string = entRes.data.entitlements_token
+  if (!entitlementToken) {
+    console.error('[link] entitlement API response:', JSON.stringify(entRes.data))
+    throw new Error('Riot entitlement token is empty — access token may lack required scope')
+  }
+  console.log(`[link] entToken obtained: ${entitlementToken.substring(0, 20)}...`)
 
   const userInfoRes = await axios.get('https://auth.riotgames.com/userinfo', {
-    headers: { Authorization: `Bearer ${accessToken}` }
+    headers: { Authorization: `Bearer ${accessToken}`, 'User-Agent': RIOT_UA },
   })
   const { sub: puuid, acct } = userInfoRes.data
   const gameName: string = acct?.game_name || ''
   const tagLine: string = acct?.tag_line || ''
+  console.log(`[link] puuid=${puuid?.substring(0, 8)}... gameName=${gameName}#${tagLine}`)
 
   let region = regionOverride || 'ap'
   try {
     const pasRes = await axios.get('https://riot-geo.pas.si.riotgames.com/pas/v1/service/chat', {
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: { Authorization: `Bearer ${accessToken}`, 'User-Agent': RIOT_UA },
       timeout: 5000,
     })
-    if (pasRes.data?.affinity) region = pasRes.data.affinity
-  } catch { /* PAS unreachable — use default */ }
+    const d = pasRes.data
+    // /service/chat may return { affinity } or { affinities: { live } }
+    const detected = d?.affinity || d?.affinities?.live
+    if (detected) { region = detected; console.log(`[link] PAS region: ${region}`) }
+    else console.warn('[link] PAS response has no affinity:', JSON.stringify(d))
+  } catch (e: any) { console.warn('[link] PAS failed:', e.message) }
 
   return { accessToken, entitlementToken, puuid, region, gameName, tagLine }
 }

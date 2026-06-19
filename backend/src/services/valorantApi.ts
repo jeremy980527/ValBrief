@@ -20,16 +20,25 @@ const TIER_COLORS: Record<string, string> = {
   '411e4a55-4e59-7757-41f0-86a53f101bb5': '#ff4655',
 }
 
-let clientVersion: string | null = null
+let clientVersionCache: { value: string; at: number } | null = null
 let skinLevelMap: Map<string, any> | null = null
 
 export async function getClientVersion(): Promise<string> {
-  if (clientVersion) return clientVersion
+  // Refresh every 30 minutes so we always have the current version
+  if (clientVersionCache && Date.now() - clientVersionCache.at < 1800000) {
+    return clientVersionCache.value
+  }
   try {
-    const r = await axios.get(`${VAPI}/version`)
-    clientVersion = r.data.data.riotClientVersion
-    return clientVersion!
-  } catch { return 'release-08.08-shipping-7-2024063012' }
+    const r = await axios.get(`${VAPI}/version`, { timeout: 8000 })
+    const v: string = r.data.data.riotClientVersion
+    console.log(`[shop] clientVersion fetched: ${v}`)
+    clientVersionCache = { value: v, at: Date.now() }
+    return v
+  } catch (e: any) {
+    console.warn(`[shop] version fetch failed: ${e.message}`)
+    if (clientVersionCache) return clientVersionCache.value
+    throw new Error('Cannot determine Riot client version')
+  }
 }
 
 async function buildSkinMap(): Promise<Map<string, any>> {
@@ -54,29 +63,28 @@ function riotHeaders(accessToken: string, entitlementToken: string, version: str
     'X-Riot-Entitlements-JWT': entitlementToken,
     'X-Riot-ClientVersion': version,
     'X-Riot-ClientPlatform': CLIENT_PLATFORM,
+    'Content-Type': 'application/json',
   }
 }
 
 async function fetchStorefrontRaw(accessToken: string, entitlementToken: string, puuid: string, region: string, version: string) {
   const headers = riotHeaders(accessToken, entitlementToken, version)
-  console.log(`[shop] region=${region} puuid=${puuid.substring(0, 8)}...`)
+  console.log(`[shop] region=${region} puuid=${puuid.substring(0, 8)}... ver=${version.substring(0, 40)}`)
+  console.log(`[shop] entToken=${entitlementToken ? entitlementToken.substring(0, 20) + '...' : 'MISSING'}`)
 
-  let lastErr: any
-  for (const ver of ['v3', 'v2']) {
-    try {
-      const url = `${pdUrl(region)}/store/${ver}/storefront/${puuid}`
-      console.log(`[shop] trying ${ver}`)
-      const r = await axios.get(url, { headers, timeout: 12000 })
-      console.log(`[shop] success with ${ver}`)
-      return r.data
-    } catch (e: any) {
-      console.error(`[shop] ${ver} status=${e?.response?.status} body=${JSON.stringify(e?.response?.data)}`)
-      lastErr = e
-      // always fall through to next version
-      continue
-    }
+  const url = `${pdUrl(region)}/store/v2/storefront/${puuid}`
+  console.log(`[shop] GET ${url}`)
+  try {
+    const r = await axios.get(url, { headers, timeout: 12000 })
+    console.log(`[shop] success status=${r.status}`)
+    return r.data
+  } catch (e: any) {
+    const status = e?.response?.status
+    const body = e?.response?.data
+    const raw = typeof body === 'string' ? body : JSON.stringify(body)
+    console.error(`[shop] FAILED status=${status} body=${raw}`)
+    throw e
   }
-  throw lastErr ?? new Error('storefront unreachable')
 }
 
 export async function getStorefront(accessToken: string, entitlementToken: string, puuid: string, region: string) {
