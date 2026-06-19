@@ -57,13 +57,27 @@ function riotHeaders(accessToken: string, entitlementToken: string, version: str
   }
 }
 
+async function fetchStorefrontRaw(accessToken: string, entitlementToken: string, puuid: string, region: string, version: string) {
+  const headers = riotHeaders(accessToken, entitlementToken, version)
+  try {
+    const r = await axios.get(`${pdUrl(region)}/store/v3/storefront/${puuid}`, { headers })
+    return r.data
+  } catch (e1: any) {
+    if (e1?.response?.status === 404) {
+      console.log('[shop] v3 returned 404, falling back to v2')
+      const r = await axios.get(`${pdUrl(region)}/store/v2/storefront/${puuid}`, { headers })
+      return r.data
+    }
+    console.error('[shop] storefront error:', e1?.response?.status, JSON.stringify(e1?.response?.data))
+    throw e1
+  }
+}
+
 export async function getStorefront(accessToken: string, entitlementToken: string, puuid: string, region: string) {
   const [version, skins] = await Promise.all([getClientVersion(), buildSkinMap()])
-  const r = await axios.get(`${pdUrl(region)}/store/v2/storefront/${puuid}`, {
-    headers: riotHeaders(accessToken, entitlementToken, version),
-  })
+  const data = await fetchStorefrontRaw(accessToken, entitlementToken, puuid, region, version)
 
-  const panel = r.data.SkinsPanelLayout
+  const panel = data.SkinsPanelLayout
   const offers: any[] = panel.SingleItemStoreOffers || []
 
   const items = await Promise.all(
