@@ -7,8 +7,11 @@ let newsCache: { data: any; at: number } | null = null
 const HENRIK_BASE = 'https://api.henrikdev.xyz'
 
 // Map HenrikDev category slugs to frontend display categories
+// Henrik uses underscores (game_updates), not hyphens
 const CAT_MAP: Record<string, string> = {
+  'patch_notes': 'PATCH NOTES',
   'patch-notes': 'PATCH NOTES',
+  'game_updates': 'GAME UPDATES',
   'game-updates': 'GAME UPDATES',
   'esports': 'ESPORTS',
   'dev': 'GAME UPDATES',
