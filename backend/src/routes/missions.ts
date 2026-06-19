@@ -10,7 +10,11 @@ router.get('/', requireRiotAuth, async (req, res) => {
     const missions = await getMissions(accessToken, entitlementToken, puuid, region)
     res.json({ missions })
   } catch (e: any) {
-    console.error('Missions error:', e.message)
+    const status = e?.response?.status
+    console.error('Missions error:', status, JSON.stringify(e?.response?.data), e.message)
+    if (status === 401 || status === 403 || status === 404) {
+      return res.status(401).json({ error: 'Riot token 已過期，請重新連結帳號', code: 'RIOT_TOKEN_EXPIRED' })
+    }
     res.status(500).json({ error: 'Failed to fetch missions', detail: e.message })
   }
 })

@@ -1,24 +1,40 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Target, RefreshCw, AlertCircle, Zap } from 'lucide-react'
+import { Target, RefreshCw, AlertCircle, Zap, Link2 } from 'lucide-react'
 import { missionsApi } from '../lib/api'
+import { useAuth } from '../context/AuthContext'
 import { Mission } from '../types'
 import PageTransition, { stagger, fadeUp } from '../components/ui/PageTransition'
 import MissionCard from '../components/Missions/MissionCard'
+import LinkRiotModal from '../components/RiotLink/LinkRiotModal'
 
 export default function MissionsPage() {
+  const { refreshUser } = useAuth()
   const [missions, setMissions] = useState<Mission[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [tokenExpired, setTokenExpired] = useState(false)
+  const [showRelink, setShowRelink] = useState(false)
 
   async function fetchMissions() {
-    setLoading(true); setError('')
+    setLoading(true); setError(''); setTokenExpired(false)
     try {
       const data = await missionsApi.get()
       setMissions(data.missions || [])
     } catch (e: any) {
-      setError(e?.response?.data?.error || 'Failed to load missions')
+      const code = e?.response?.data?.code
+      if (code === 'RIOT_TOKEN_EXPIRED') {
+        setTokenExpired(true)
+      } else {
+        setError(e?.response?.data?.error || 'Failed to load missions')
+      }
     } finally { setLoading(false) }
+  }
+
+  function handleRelinked() {
+    setShowRelink(false)
+    refreshUser()
+    fetchMissions()
   }
 
   useEffect(() => { fetchMissions() }, [])
@@ -63,7 +79,19 @@ export default function MissionsPage() {
           </motion.div>
         )}
 
-        {error ? (
+        {tokenExpired ? (
+          <motion.div variants={fadeUp} className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="w-16 h-16 rounded-full bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center mb-4">
+              <Link2 size={24} className="text-yellow-400" />
+            </div>
+            <p className="text-white font-semibold mb-2">Riot Token 已過期</p>
+            <p className="text-white/40 text-sm mb-6 max-w-xs">Riot 登入憑證每小時會過期，需要重新連結一次。</p>
+            <button onClick={() => setShowRelink(true)} className="btn-primary flex items-center gap-2">
+              <Link2 size={15} />
+              重新連結 Riot 帳號
+            </button>
+          </motion.div>
+        ) : error ? (
           <motion.div variants={fadeUp} className="flex flex-col items-center justify-center py-20 text-center">
             <div className="w-16 h-16 rounded-full bg-val-red/10 border border-val-red/20 flex items-center justify-center mb-4">
               <AlertCircle size={24} className="text-val-red" />
@@ -122,6 +150,10 @@ export default function MissionsPage() {
           </motion.div>
         )}
       </div>
+
+      {showRelink && (
+        <LinkRiotModal onClose={() => setShowRelink(false)} onLinked={handleRelinked} />
+      )}
     </PageTransition>
   )
 }
