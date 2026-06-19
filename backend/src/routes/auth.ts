@@ -158,7 +158,7 @@ if (-not (Test-Path $lockfilePath)) {
     Write-Host ""
     Write-Host "X  找不到 Riot Client lockfile" -ForegroundColor Red
     Write-Host "   請先開啟 Riot Client（不需要進遊戲），再重新執行此腳本" -ForegroundColor Yellow
-    Read-Host "`n按 Enter 關閉"
+    Write-Host ""; Read-Host "按 Enter 關閉"
     exit 1
 }
 
@@ -195,7 +195,7 @@ try {
     Write-Host ""
     Write-Host "X  無法取得 Token: $($_.Exception.Message)" -ForegroundColor Red
     Write-Host "   請確認 Riot Client 正在執行中" -ForegroundColor Yellow
-    Read-Host "`n按 Enter 關閉"
+    Write-Host ""; Read-Host "按 Enter 關閉"
     exit 1
 }
 
@@ -216,7 +216,7 @@ try {
     Write-Host "X  連線失敗：$($_.Exception.Message)" -ForegroundColor Red
 }
 
-Read-Host "\`n按 Enter 關閉"
+Write-Host ""; Read-Host "按 Enter 關閉"
 `
 
   res.setHeader('Content-Type', 'application/octet-stream')
