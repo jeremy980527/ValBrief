@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { ShoppingBag, RefreshCw, AlertCircle, Link2 } from 'lucide-react'
+import { ShoppingBag, RefreshCw, AlertCircle, Clock } from 'lucide-react'
 import { shopApi } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { DailyShop } from '../types'
@@ -69,15 +69,14 @@ export default function ShopPage() {
 
         {tokenExpired ? (
           <motion.div variants={fadeUp} className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="w-16 h-16 rounded-full bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center mb-4">
-              <Link2 size={24} className="text-yellow-400" />
+            <div className="w-16 h-16 rounded-full bg-green-primary/10 border border-green-primary/20 flex items-center justify-center mb-4">
+              <Clock size={24} className="text-green-primary" />
             </div>
-            <p className="text-white font-semibold mb-2">Riot Token 已過期</p>
-            <p className="text-white/40 text-sm mb-6 max-w-xs">Riot 登入憑證每小時會過期，需要重新連結一次以取得最新資料。</p>
-            <button onClick={() => setShowRelink(true)} className="btn-primary flex items-center gap-2">
-              <Link2 size={15} />
-              重新連結 Riot 帳號
-            </button>
+            <p className="text-white font-semibold mb-2">商店功能即將開放</p>
+            <p className="text-white/40 text-sm max-w-sm leading-relaxed">
+              目前正在等待 Riot 官方 API 授權審核中。審核通過後，商店功能將自動啟用。
+            </p>
+            <p className="text-white/20 text-xs mt-4">新聞與組隊功能仍可正常使用</p>
           </motion.div>
         ) : error ? (
           <motion.div variants={fadeUp} className="flex flex-col items-center justify-center py-20 text-center">
